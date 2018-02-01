@@ -1,0 +1,150 @@
+ Hive
+--------
+Hive is a data warehouse environment in hadoop framework where we can store data into tables in structured format.
+Hive runs on top of hdfs and MapReduce i.e. for hive table backend storage is hdfs, execution model is map reduce.
+When you create a hive table in HDFS one directory will be created and when you load file into table , file is copied into directory.
+Hive gives a table shape (structured shape) to the HDFS file.
+HQL (hive query language) is used to manage and process the data.
+HQL can process following varities of data
+    i) Structured data.
+    ii) xml
+    iii) json
+    iv) URLs( weblog)
+But it is weak for unstructured data. we should use pig with nlp , or mapreduce/spark 
+Hive supports only sequential reading from bolck begin to end so it is slower than impala.
+
+HQL can process following formats.
+   i) text 
+  ii) sequence
+   iii) rc
+   iv) orc
+   v) avro
+  vi) parquet.
+
+Data type
+---------
+Basic
+number, text, image, video
+collection
+array, map, struct, union
+
+Hive DDLs
+-----------
+hive> show databases; --> to list out existed databases.
+hive> create database demos; --> in hdfs, /user/hive/warehouse/demos.db is created.
+hive> use demos;
+hive> drop database demos; --> to drop database, it should be empty.
+hive> create table raw(line string); -->in hdfs, /user/hive/warehouse/demos.db/raw is created.
+we can alter column
+alter table old_table_name new_table_name;
+creating and inserting simultaneously not possible in hive
+
+Hive tables
+------------
+1) managed(inner) 2) external
+we can insert using insert like sql and using load from some files
+
+Hive tables classified as
+1) Inner and external tables
+--> inner table dropped, both metadata and data will be deleted. from HDFS table directory will be deleted, so you lost data can't reuse.
+--> external table dropped, only metadata is deleted. 
+2) Partitioned and non-partitioned
+3) Bucketed and non-bucketed
+
+hive> load data local inpath 'file1' into table raw;
+--> in hdfs, '/user/hive/warehouse/demos.db/raw/file1' file1 copied into table directory "raw".
+--> you can store multiple files file1,file2,...
+
+hive> select * from raw; --> hive will read all rows of all files in cli mode
+--> Generally temporary data or intermediate data is keeping into inner tables.
+
+to store result in some file or directory
+--> 1) hive -e "select * from table where id > 10" > ~/sample_output.txt ---------> or output.csv
+--> 2) INSERT OVERWRITE DIRECTORY '/path/to/output/dir' SELECT * FROM table WHERE id > 100;
+--> 3) INSERT OVERWRITE LOCAL DIRECTORY '/home/hadoop/YourTableDir'
+	ROW FORMAT DELIMITED
+	FIELDS TERMINATED BY '\t'
+	STORED AS TEXTFILE
+	SELECT * FROM table WHERE id > 100;
+
+hive> create External table etab (line string);
+--> if we drop the table etab and after that again created (inner or external). it will reuse the existing directory and data.
+--> CREATE EXTERNAL TABLE IF NOT EXISTS etab (id int, region_code int, count int);
+
+We can use custom location.
+hive> create table tabx (line string) location '/user/myloc';
+
+Loading data into hive table
+hive> load data local inpath 'file1' into table tabx; --> through hive
+$ hadoop fs -copyFromLocal file2 /user/myloc/tabx; --> through command prompt (using hdfs or hadoop command)
+hive> load data local inpath 'file3' overwrite into table tabx; --> it will overwrite the existing data
+--> if load same file again it will create copy of that file
+--> if we load file from HDFS to hive, the source file will be deleted from HDFS
+--> if we have multiple columns or fields then we need create table with multiple columns
+hive> create table test1 (a int,b int) row format delimited fields terminated by ',';
+--> the default delimiter for hive is "<>" diamond or "\001" so we have to specify delimiter used in given file
+
+How to load data from one table to another table
+hive> create table raw(line string);
+hive> create table tmpr(y int, t int);
+hive> insert overwrite table tmpr select substr(line,6,4), substr(line,13,2) from raw;
+
+hive> insert overwrite table tmpr2                   
+       select * from (                              
+          select substr(line,6,4), substr(line,13,2)
+        from traw
+          where substr(line,13,1)!='-'              
+             union all
+          select substr(line,6,4), substr(line,13,3)
+         from traw                                  
+          where substr(line,13,1)='-' ) t;        
+
+
+PARTITIONED BY (City Varchar(100))
+Clustered By (EmployeeID) into 20 Buckets
+STORED AS TEXTFILE;
+
+1)-------->
+CREATE EXTERNAL TABLE IF NOT EXISTS reg_logs (id int, region_code int, count int)
+PARTITIONED BY (utc_date STRING, utc_hour STRING)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t'
+STORED AS TEXTFILE 
+LOCATION '/ad_data/raw/reg_logs';
+2)---------->
+CREATE EXTERNAL TABLE IF NOT EXISTS reg_logs_org (id int, region_code int, count int)
+PARTITIONED BY (utc_date STRING)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t'
+STORED AS TEXTFILE
+LOCATION '/ad_data/reg_logs_org';
+3)--------->
+insert overwrite table reg_logs_org PARTITION (utc_date)
+select id, region_code, sum(count), utc_date from reg_logs
+group by utc_date, id, region_code
+
+====================================================================
+use tez engine:-
+---------------
+set hive.execution.engine=tez;
+
+use vectorization:-
+------------------
+set hive.vectorized.execution.enabled=true;
+set hive.vectorized.execution.reduce.enabled=true;
+
+stored as orc file:-
+--------------------
+STORED AS ORC tblproperties("compress.mode"="SNAPPY");
+
+To enable dynamic partition:-
+---------------------------
+SET hive.exec.dynamic.partition = true;
+SET hive.exec.dynamic.partition.mode = nonstrict;
+SET hive.mapred.mode = nonstrict;
+
+cost based hive optimization:-
+----------------------------
+set hive.cbo.enable=true;
+set hive.compute.query.using.stats=true;
+set hive.stats.fetch.column.stats=true;
+set hive.stats.fetch.partition.stats=true;
+
