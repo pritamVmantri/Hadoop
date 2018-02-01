@@ -1,0 +1,146 @@
+Pig is a data flow language.
+other cascading and crunch
+dataflow is a collection of pipes and pipe is an operaton
+Operation can be loading, transforming, processing, sorting, aggregating, grouping
+
+$pig 
+grunt> --- default is hdfs mode. we can access hdfs file
+
+$pig -x local
+grunt> --- getting into local mode. so that we can access local files. useful in testing
+
+Pig terminology
+1) relation
+2) bag   ---> collection of tuple
+	outerbag -> collection of all tuples and referenced by relation
+	innerbag -> a bag placed as a field in a bag
+3) tuple ---> collection of fields
+4) field ---> is a data entity
+
+Operators
+1) load              --> to load data from file to relation
+                     --> pig load is just local loading. Still fie is available in HDFS, we are creating alias for that file
+	has two storage method
+		1) PigStorage() -> TextInputFormat (default and default delimiter is '\t') for text files
+		2) BinStorage() -> SequenceInputFormat (Binaryfiles) for compressed files
+var = load 'file/path' using storagemethod(delimiter) as (schema->var:type)
+int,chararray
+2) foreach           --> copy data one relation to another (foreach emp generate *)
+                     --> generate new fields (foreach emp generate *,esal *0.1 as tax) ->new field aliases can not be reused in same statement
+                     --> filter fields (foreach emp generate ename,esal)
+                     --> change fields order (foreach emp generate esal,ename)
+                     --> renaming fields (foreach emp generate ename as name)
+                     --> type casting (foreach emp generate (int)tax)
+                     --> transformations (foreach emp generate name, sex, (sex='f'?'Female':'Male'))
+                      =>ternary operator act like if-else,  (condtion ? truevalue:falsevalue ) ex. (a>b ? a:b)
+                     --> field number as index (foreach emp generate $2 as sal)
+                     --> cleaning null (foreach emp generate (sal is null?0:sal))
+3) sample            --> to get random sample of given percentage
+                     --> when you take multiple different sample sets can have common records is called as sampling with replacement model. 
+                     --> if you need sampling with out replacement model, go with "Hive Bucketing" feature. 
+                     --> sample emp 0.5
+4) limit             --> to get top n number of tuples
+                     --> can not fetch middle number of tuples, last n number of tuples so you can do by udfs, joins
+                     --> limit emp 3
+5) filter            --> to fetch matching tuples with given criteria
+                     --> filter emp by(sex=='f')
+                     --> filter emp by dno in (11,13); not in, between, not between is not available
+6) dump              --> to execute entire flow and output will written on console
+7) store             --> to execute entire flow and output will written into file
+                     --> store res into 'file1' using PigStorage(',')
+8) describe          --> to get schema of relation
+9) illustrate        --> to get entire heirarchy of the flow, with schema and sample data 
+                     --> used as debugging
+10) union            --> merging datasets, attributes must be same (take an order and rename operations)
+                     --> union emp1,emp2 (It is equivalent to sql union all, it allow duplicates)
+11) join             --> join emp by dno, dept by dno
+12) left outer join  --> join emp by dno left outer, dept by dno
+13) right outer join --> join emp by dno right outer, dept by dno
+14) full outer join  --> join emp by dno full outer, dept by dno
+15) cross            --> to get cartesian product ex. cross e1,e2
+16) group            --> all tuples making as one group. it constructs seperate inner bags for each data group
+17) cogroup          --> grouping for each dataset seprately. returns seprate inner bag for each dataset
+18) exec             --> submitting scripts from grunt shell (relation aliases not available in grunt) exec demo.pl
+19) run              --> submitting scripts from grunt shell (relation aliases are available in grunt) run demo.pl
+20) pig              --> submitting scripts from command prompt (relation aliases not available in grunt) pig demo.pl
+21) register         -->
+22) define           -->
+23) order            --> to sort data in either ascending or descending(desc) order
+                     --> e = order emp by sal desc;
+                     -->  top3 = limit e 3;
+                     --> above process is correct, if all salaries are unique. 
+                     --> ex: if 90000 is max salary, and is taken by ten people, then above work is wrong. Solution: joins
+24) distinct         --> to eliminate duplicates
+                     --> based on entire tuple match, duplicates will be eliminated
+
+
+----------------------------------
+Demo of WordCount:
+
+lines = load 'piglabs/comment.txt'
+       as (line:chararray);
+words = foreach lines generate 
+         FLATTEN(TOKENIZE(line)) as word;
+grp = group words by word;
+store grp into 'piglabs/result1';
+
+
+Aggregations:
+--> Aggregation should be applied on only inner bags
+--> When you group the data, inner bags will be produced
+--> MAX,MIN,SUM,AVG,COUNT multiple aggregation is possible
+
+grunt> e = foreach emp generate sal;
+grunt> grp = group e all;
+grunt> res = foreach grp generate SUM(e.sal) as total;
+
+Grouping aggregation
+grunt> e = foreach emp generate sex, sal;
+grunt> grp = group e by sex;
+grunt> res = foreach grp generate group as sex, SUM(e.sal) as tot; 
+grunt> store res into 'piglabs/result2';
+
+Multigrouping is not possible directly so make multiple field as tuple and group it by tuple
+grunt> e = foreach emp generate *;
+grunt> grp = group e by (dno,sex);
+grunt> res = foreach grp generate group dno as dno, gropu sex as sex, SUM(e.sal) as tot; 
+grunt> store res into 'piglabs/result2';
+
+Performing grouping aggregation seperately for each dataset
+grunt> emp1 = load 'piglabs/emp' using PigStorage(',') as (id:int, name:chararray, sal:int, dno:int, sex:chararray);
+grunt> emp2 = load 'piglabs/emp2' using PigStorage(',') as (id:int, name:chararray, sal:int, dno:int, sex:chararray);
+grunt> e1 = foreach emp1 generate sex, sal;
+grunt> e2 = foreach emp2 generate sex, sal;
+grunt> cg = cogroup e1 by sex, e2 by sex;
+grunt> res = foreach cg generate group as sex, SUM(e1.sal) as tot1, SUM(e2.sal) as tot2;
+grunt> res = foreach res generate *, tot1+tot2 as tot;
+grunt> dump res
+
+-----------------------
+PIG UDF
+-----------------------
+--> need to configure pig-core.jar
+--> UDF classes 1) org.apache.pig.EvalFunc 2) org.apache.pig.data.Tuple
+--> UDF class contain a method => exec(Tuple v)
+--> exec() method has an argument Tuple which can contain multiple fields and method is called for n times where n in number of tuples
+--> After writing a prog convert it into jar, then register into pig and finally create a temporary function in pig.
+--> home/demo.jar
+grunt> register home/demo.jar; --> register UDF into pig
+grunt> define demofunc pig.test.DemoFunc(); --> create temporery function in pig for given UDF class as -> package.ClassName()
+grunt> res = foreach generate *, demofunc(*) as demo;
+
+example:
+
+package pig.test;
+import java.io.IOException;
+import org.apache.pig.EvalFunc;
+import org.apache.pig.data.Tuple;
+public class RowMax extends EvalFunc<Integer>{
+  public Integer exec(Tuple v) throws IOException{
+    int a = (Integer)v.get(0);
+    int b = (Integer)v.get(1);
+    if(a>b)
+      return a;
+    else
+      return b;
+}}
