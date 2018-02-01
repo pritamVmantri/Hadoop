@@ -1,0 +1,120 @@
+sqoop help
+sqoop help import
+
+sqoop-import-all-tables ---connect --username --password
+
+sqoop import \
+	--connect jdbc:mysql://localhost:db_name \  ----> DB URI <driver(jdbc/odbc)>:<RDBMS>://<hostname>/<DB_name(Post number)>
+	--username root \
+	--password root \
+	--table sample \
+
+Sqoop to hbase:-
+-----------------
+	--hbase-table h_sample \
+	--column-family c_family \
+	--hbase-create-table \       ------> if table does not exist
+	--hbase-row-key pk_id \      ------> if no PK then for hbase row key need to specify PK explicitly
+	--column-family c_fam_2 \
+	--column dno, dname, dloc
+
+
+Sqoop to hive:-
+----------------
+	--fields-terminated-by ',' \
+	--lines-terminated-by '\n' \
+	--Hive-import \
+	--create-hive-table \     --------> fails if table already exists
+	--Hive-table hive_table_name \
+	--hive-overwrite \
+
+
+Sqoop to hdfs:-
+----------------
+--warehouse-dir \ => specify to hive table location and used in development process
+--target-dir \    => specify hdfs location and used in production process we can create external hive table
+--as-textfile     => default
+--as-avrodatafile 
+--as-parquetfile 
+--as-sequencefile
+
+
+fields which require:-
+---------------------
+In sqoop only mapper no reducer is working.
+-m 2 or --num-mappers 2 \  ----------->no of mapper 
+if table not having PK then no of mapper should be 1
+
+--split-by table.id \ => gives a cloumn to generate split to import data parallely efficiently if not provided split data by PK column
+			also the column must be integer and evenly distributed for good performance to avoid unbalanced task
+--boundary-query \    => it is also used for creating split min(id) and max(id)
+--query 'your personalized query comes here' \
+--where 'sal>=10000 and sex="male" ' \    -----> to select specific rows
+$CONDITIONS  => it is used only in query field in where clause if there is only unique condition expression
+e.g. --query 'SELECT a.*, b.* FROM a JOIN b on (a.id == b.id) WHERE $CONDITIONS' \
+	$CONDITIONS which each Sqoop process will replace with a unique condition expression
+
+--verbose \
+
+--compress \
+--compression-codec org.apache.hadoop.io.compress.SnappyCodec\
+
+--option-file /hdfs-path/optionfile.txt
+in option file we can store basic code which require for repetatively
+like connect username etc
+also need to store password in sqoop.pwd file and give field as
+--password-file /sqoop.pwd
+
+
+Incremental load:-
+--------------------
+--append
+--incremental
+--check-column
+--last-value
+
+...................................................................................................
+Sqoop export \
+	--connect ... \
+	--username ... \
+	--password ... \
+	--table ... \
+	--export-dir 'output_dir/000000_0' \
+	--input-field-terminated-by '\t' \
+
+--------------------------------------------------------------------------------------------------------
+Sqoop-job:-
+-----------
+Sqoop-job makes work easy when we are using incremental import. 
+The last value imported is stored in the job configuration of the sqoop-job, 
+so for the next execution it directly uses from configuration and imports the data.
+
+Sqoop-job options:
+
+Argument    Description
+--create    Defines a new job with the specified job-id (name). Actual sqoop import command should be seperated by “--“
+--delete    Deletes a saved job.
+--exec	    Executes the saved job.
+--show	    Show the save job configuration
+--list	    Lists all the saved jobs
+
+Syntax:
+$ sqoop job --create -- import --connect --table
+
+--------------------------------------------------------------------------------------------------------
+Sqoop-Codegen:-
+----------------
+Sqoop-codegen command generates Java class files which encapsulate and interpret imported records. 
+The Java definition of a record is initiated as part of the import process.
+
+sqoop codegen --connect --table 
+
+-------------------------------------------------------------------------------------------------------
+Sqoop-eval:-
+------------
+Sqoop-eval command allows users to quickly run simple SQL queries against a database and the results are printed on to the console.
+
+sqoop eval --connect --query "SQL query"
+
+sqoop list-databases --connect 
+sqoop list-tables –connect 
